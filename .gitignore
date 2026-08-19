@@ -1,0 +1,25 @@
+# Virtual environment
+venv/
+env/
+.venv/
+
+# Python artifacts
+__pycache__/
+*.pyc
+*.pyo
+.Python
+
+# Logs (from local smoke testing)
+*.log
+
+# OS/editor cruft
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Unrelated local files
+Tracker.xlsx
+
+# Env/secrets (none currently used, but guard against future additions)
+.env
