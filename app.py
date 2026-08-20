@@ -17,6 +17,26 @@ CORS(app)
 MODEL_PATH = os.path.join(os.path.dirname(__file__), 'model', 'churn_model.pkl')
 model_data = None
 
+# Stand-in values for features a caller omitted.
+#
+# The five interaction features follow the empty-window convention shared with the
+# training generator and the Apex ChurnFeatureBuilder: no interactions means zero for
+# the counts and ratios, and the 90 day cap for recency. Recency is the exception that
+# matters, because defaulting it to 0 would assert the account was contacted today.
+FEATURE_DEFAULTS = {
+    'login_frequency': 0,
+    'feature_usage_score': 0,
+    'support_ticket_count': 0,
+    'nps_score': 5,
+    'contract_value': 0,
+    'duration_months': 0,
+    'total_interactions_30d': 0,
+    'negative_sentiment_ratio': 0,
+    'avg_interaction_duration': 0,
+    'days_since_last_interaction': 90,
+    'support_interaction_ratio': 0,
+}
+
 
 def load_model():
     """Load the trained model."""
@@ -52,8 +72,16 @@ def predict_churn():
         "support_ticket_count": 1,
         "nps_score": 9,
         "contract_value": 50000,
-        "duration_months": 24
+        "duration_months": 24,
+        "total_interactions_30d": 22,
+        "negative_sentiment_ratio": 9.1,
+        "avg_interaction_duration": 34.5,
+        "days_since_last_interaction": 3,
+        "support_interaction_ratio": 13.6
     }
+
+    All eleven features are required here. An account with no interaction history
+    sends 0 for the three counts and ratios and 90 for recency.
     """
     try:
         # Validate model is loaded
@@ -158,19 +186,11 @@ def predict_batch():
         
         predictions = []
         
-        feature_defaults = {
-            'login_frequency': 0,
-            'feature_usage_score': 0,
-            'support_ticket_count': 0,
-            'nps_score': 5,
-            'contract_value': 0,
-            'duration_months': 0
-        }
         feature_columns = model_data['feature_columns']
 
         for account in data['accounts']:
             features = pd.DataFrame(
-                [[account.get(f, feature_defaults[f]) for f in feature_columns]],
+                [[account.get(f, FEATURE_DEFAULTS[f]) for f in feature_columns]],
                 columns=feature_columns
             )
 
@@ -216,20 +236,28 @@ def get_contributing_factors(data):
     feature_names = model_data['feature_columns']
     importances = model_data['model'].feature_importances_
     
-    # Define thresholds for "bad" values
+    # Define thresholds for "bad" values.
+    # The interaction labels are phrased as something a CSM can act on, which is the
+    # main reason these features are worth carrying: "Gone Silent (47)" tells you what
+    # to do next in a way that "Low Feature Adoption" never did.
     thresholds = {
         'login_frequency': {'bad_below': 15, 'label': 'Low Login Frequency'},
         'feature_usage_score': {'bad_below': 40, 'label': 'Low Feature Adoption'},
         'support_ticket_count': {'bad_above': 5, 'label': 'High Support Tickets'},
         'nps_score': {'bad_below': 4, 'label': 'Low NPS Score'},
         'contract_value': {'bad_below': 20000, 'label': 'Low Contract Value'},
-        'duration_months': {'bad_below': 6, 'label': 'Short Tenure'}
+        'duration_months': {'bad_below': 6, 'label': 'Short Tenure'},
+        'days_since_last_interaction': {'bad_above': 30, 'label': 'Gone Silent'},
+        'negative_sentiment_ratio': {'bad_above': 30, 'label': 'Negative Sentiment Trend'},
+        'total_interactions_30d': {'bad_below': 3, 'label': 'Minimal Recent Contact'},
+        'support_interaction_ratio': {'bad_above': 50, 'label': 'Mostly Support Contact'},
+        'avg_interaction_duration': {'bad_below': 10, 'label': 'Shallow Engagement'}
     }
     
     factors = []
     
     for feature in feature_names:
-        value = data.get(feature, 0)
+        value = data.get(feature, FEATURE_DEFAULTS.get(feature, 0))
         threshold = thresholds.get(feature, {})
         
         if 'bad_below' in threshold and value < threshold['bad_below']:

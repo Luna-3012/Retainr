@@ -16,6 +16,8 @@ from sklearn.metrics import (
 import joblib
 import os
 
+# Order is part of the contract: the API builds its feature frame from this list,
+# and the Apex payload keys must match these names exactly.
 FEATURE_COLUMNS = [
     'login_frequency',
     'feature_usage_score',
@@ -23,6 +25,11 @@ FEATURE_COLUMNS = [
     'nps_score',
     'contract_value',
     'duration_months',
+    'total_interactions_30d',
+    'negative_sentiment_ratio',
+    'avg_interaction_duration',
+    'days_since_last_interaction',
+    'support_interaction_ratio',
 ]
 
 
@@ -56,6 +63,16 @@ def validate_dataframe(df):
         (df['nps_score'].between(1, 10).all(), 'nps_score must be 1–10'),
         (df['contract_value'].between(5000, 100000).all(), 'contract_value must be 5000–100000'),
         (df['duration_months'].between(1, 48).all(), 'duration_months must be 1–48'),
+        (df['total_interactions_30d'].between(0, 40).all(),
+         'total_interactions_30d must be 0–40'),
+        (df['negative_sentiment_ratio'].between(0, 100).all(),
+         'negative_sentiment_ratio must be 0–100'),
+        (df['avg_interaction_duration'].between(0, 120).all(),
+         'avg_interaction_duration must be 0–120'),
+        (df['days_since_last_interaction'].between(0, 90).all(),
+         'days_since_last_interaction must be 0–90'),
+        (df['support_interaction_ratio'].between(0, 100).all(),
+         'support_interaction_ratio must be 0–100'),
         (df['churned'].isin([0, 1]).all(), 'churned must be 0 or 1'),
     ]
     for ok, msg in checks:
@@ -140,7 +157,7 @@ def save_model(model, feature_columns):
     model_data = {
         'model': model,
         'feature_columns': feature_columns,
-        'model_version': '1.2',
+        'model_version': '1.3',
     }
 
     filepath = os.path.join(model_dir, 'churn_model.pkl')
